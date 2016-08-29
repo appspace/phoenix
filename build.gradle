@@ -1,0 +1,119 @@
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'base' 
+apply plugin: 'jp.classmethod.aws'
+apply plugin: 'jp.classmethod.aws.lambda'
+apply plugin: 'jp.classmethod.aws.s3'
+
+def regionName = 'us-east-1'
+
+def codeS3File = new jp.classmethod.aws.gradle.lambda.S3File()
+codeS3File.bucketName = "adc-code-"+System.currentTimeMillis()
+codeS3File.key = "esp8266.zip"
+
+buildscript {
+	repositories {
+		mavenCentral()
+		maven { url "https://plugins.gradle.org/m2/" }
+	}
+	dependencies {
+		classpath "jp.classmethod.aws:gradle-aws-plugin:0.+"
+	}
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+	compile 'com.amazonaws:aws-lambda-java-core:1.+'
+	compile 'com.amazonaws:aws-lambda-java-events:1.+'
+	compile 'com.amazonaws:aws-lambda-java-log4j:1.+'
+	compile 'com.amazonaws:aws-java-sdk-lambda:1.+'
+	testCompile "junit:junit:+"
+}
+
+aws {
+  profileName = ''	//Type in your profile name as it is in AWS plugin or ~./aws/credentials
+  region = regionName
+}
+
+lambda {
+	region = regionName
+}
+
+task deleteBucket(type: jp.classmethod.aws.gradle.s3.DeleteBucketTask) {
+	bucketName = codeS3File.bucketName
+	ifExists true
+	deleteObjects true
+	doLast {
+		println 'Bucket '+bucketName+' deleted'
+	}
+}
+
+task createBucket(type: jp.classmethod.aws.gradle.s3.CreateBucketTask, dependsOn: deleteBucket) {
+	bucketName = codeS3File.bucketName
+	ifNotExists true
+	doLast {
+		println 'Bucket '+bucketName+' recreated'
+	}
+	
+}
+
+task uploadContent(type: jp.classmethod.aws.gradle.s3.AmazonS3FileUploadTask, dependsOn: createBucket) {
+	file = file("build/distributions/esp8266.zip")
+	bucketName = codeS3File.bucketName
+	key = codeS3File.key
+	
+	def m = new com.amazonaws.services.s3.model.ObjectMetadata()
+	m.setCacheControl("no-cache, no-store")
+	objectMetadata = m
+	doLast {	
+		println 'Uploaded '+codeS3File.key+' to '+codeS3File.bucketName+' bucket'
+	}
+}
+
+// This task updates function code. If the function doesn't exist, it fails.  
+task updateAdcFunction(type: jp.classmethod.aws.gradle.lambda.AWSLambdaUpdateFunctionCodeTask, dependsOn: uploadContent) {
+	functionName = "AdcFunction"
+	s3File = codeS3File
+	doLast {
+		println 'Updated '+functionName+' lambda function'
+	}
+}
+
+// This task updates function code. If the function doesn't exist, it fails.  
+task updateLoadRangeFunction(type: jp.classmethod.aws.gradle.lambda.AWSLambdaUpdateFunctionCodeTask, dependsOn: uploadContent) {
+	functionName = "LoadRangeFunction"
+	s3File = codeS3File
+	doLast {
+		println 'Updating '+functionName+' lambda function'
+	}
+}
+
+// This task builds Zip file that is ready to be uploaded to S3 bucket.
+// It can be used then to update Lambda code
+task buildZip(type: Zip) {
+	from classes
+    from compileJava
+    from processResources              
+    into('lib') {
+        from configurations.runtime
+    }           
+}
+
+build.dependsOn buildZip
+
+task deploy() << {
+	tasks.buildZip.execute()
+	//tasks.deleteBucket.execute()
+	tasks.createBucket.execute()
+	tasks.uploadContent.execute()
+	
+	tasks.updateLoadRangeFunction.execute()
+	tasks.updateAdcFunction.execute()
+
+	tasks.deleteBucket.execute()
+}
+
+deploy.dependsOn assemble

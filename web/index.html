@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Values</title>
+
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <meta http-equiv="refresh" content="600">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/moment.js/2.13.0/moment.min.js"></script>
+    <script src="node_modules/chart.js/dist/Chart.bundle.min.js"/>
+</head>
+<body>
+    <script>
+        var myChart = new Chart('adcValues');
+    </script>
+    ADC Values: <br/>
+    <canvas id="myChart" width="1000" height="800"></canvas>
+    <script>
+        var timeFormat = 'YYYY-MM-DDTHH:mm:ss.SSSz';
+        var opts = {
+            responsive: false,
+            title: {
+                display:true,
+                        text:"ADC values"
+            },
+            scales: {
+                xAxes: [{
+                    type: "time",
+                    time: {
+                        min: moment("2016-08-22T00:00:00.000Z", timeFormat),
+                        //max: moment("2016-08-27T00:00:00.000Z", timeFormat),
+                        format: timeFormat,
+                        round: 'minute',
+                        tooltipFormat: 'MM-DD HH:mm'
+                    },
+                    scaleLabel: {
+                        display: true,
+                        labelString: 'Date'
+                    }
+                }, ],
+                yAxes: [{
+                    scaleLabel: {
+                        display: true,
+                        labelString: 'value'
+                    }
+                }]
+            },
+        };
+        $.ajax( {url:"https://lzwo7r0mek.execute-api.us-east-1.amazonaws.com/prod/adc?chipId=422918&start=2016-08-25%2000:00:00&end=2016-08-29%2000:00:00",
+            type:"GET",
+            success:function(loadedData1, textStatus, jqXHR) {
+                $.ajax( {url:"https://lzwo7r0mek.execute-api.us-east-1.amazonaws.com/prod/adc?chipId=761506&start=2016-08-25%2000:00:00&end=2016-08-29%2000:00:00",
+                    type:"GET",
+                    success:function(loadedData2, textStatus, jqXHR) {
+                        //alert("success");
+                        var ctx = document.getElementById("myChart").getContext("2d");;
+                        myChart = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                datasets: [{
+                                    label: 'ADC Values',
+                                    fill: false,
+                                    borderColor: "red",
+                                    borderWidth: 1,
+                                    pointRadius: 2,
+                                    data: loadedData1.values
+                                }, {
+                                    label: 'Chip Voltage',
+                                    fill: false,
+                                    borderColor: "green",
+                                    borderWidth: 1,
+                                    pointRadius: 2,
+                                    data: loadedData2.values
+                                }
+                                ]
+                            },
+                            options: opts
+                        });
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {alert("failure: "+errorThrown);}
+                });
+            },
+            error: function(jqXHR, textStatus, errorThrown) {alert("failure: "+errorThrown);}
+        });
+
+
+    </script>
+</body>
+</html>
